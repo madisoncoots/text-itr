@@ -1,8 +1,8 @@
 ---
-title: "Text ITR Initial Analysis"
-author: "Madison Coots and Jack Deschler"
+title: "Coots/Deschler Initial Analysis"
 output: pdf_document
 header-include: 
+  - \usepackage{setspace}\doublespacing
   - \newcommand\E{\mathbb{E}}
   - \newcommand\V{\mathbb{V}}
   - \newcommand\cN{\mathcal{N}}
@@ -10,10 +10,44 @@ editor_options:
   chunk_output_type: console
 ---
 
-## Coots/Deschler Final Project Initial Analysis
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+# libraries and setup
+library(evalITR)
+library(dplyr)
+library(haven)
+
+setwd('~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/Replication package/Field experiment data and code/')
+
+# read data
+df <- read_dta("TextMessageData.dta")
+
+# Create Treatment column (original does not work for some reason)
+df$Treatment <- df$consequences + df$planmaking + df$combination
+
+control <- df[df$Treatment == 0,]
+treated_overall <- df[df$Treatment == 1,]
+cons <- df[df$consequences == 1,]
+plan <- df[df$planmaking == 1,]
+combo <- df[df$combination == 1,]
 ```
 
+Initial results table:
+\begin{tabular}{l | c c c c | r}
+  & No text & Planmaking & Consequences & Combination & Overall \\ \hline
+  Appeared & `r format(nrow(control) - sum(control$FTA), scientific = F)` & `r nrow(plan) - sum(plan$FTA)` & `r nrow(cons) - sum(cons$FTA)` & `r nrow(combo) - sum(combo$FTA)` & `r format(nrow(df) - sum(df$FTA), scientific = F)` \\
+  Failed to Appear & `r format(sum(control$FTA), scientific = F)` & `r sum(plan$FTA)` & `r sum(cons$FTA)` & `r sum(combo$FTA)` & `r format(sum(df$FTA), scientific = F)` \\ \hline
+  Appearance rate & `r round(1 - (sum(control$FTA)/nrow(control)), 3)` & `r round(1 - (sum(plan$FTA)/nrow(plan)), 3)` & `r round(1 - (sum(cons$FTA)/nrow(cons)), 3)` & `r round(1 - (sum(combo$FTA)/nrow(combo)), 3)` & `r round(1 - (sum(df$FTA)/nrow(df)), 3)`
+\end{tabular}
+
+Treating each treatment independently but with the same large control group, let $\pi_{jk}$ be the proportion of individuals in the principal stratum where $(Y_i(0), Y_i(1)) = (j,k)$. Then, for any set of constraints on the strata, we know that the possible range of the graduation rate, $G$ is $[\text{min}(\pi_{11}), \text{max}(1-\pi_{00})]$. Additionally, we can write the possible range if we make the monotonicity assumption
+Using the repro, we can then write the range of  possible appearance rates under each treatment type. Additionally, we can write the possible range if we make the monotonicity assumption $Y_i(1) \geq Y_i(0)$. For various reasons with this data, we believe the monotonicity assumption is not a good one to make. There are a multitude of theoretical mechanisms by which a text message could cause individuals to _not_ appear in court, thus resulting in $Y_i(0) > Y_i(1)$. These could include, but are not limited to, messages scaring individuals due to the consequential nature, TODO.
+
+\begin{tabular}{r | l l}
+Treatment & No assumption & Monotonicity assumption \\ \hline
+Planmaking & [.266, 1] & [.584,.682] \\
+Consequences & [.294, 1] & [.584, .710] \\
+Combination & [.305, 1] & [.584, .721]
+\end{tabular}
 
