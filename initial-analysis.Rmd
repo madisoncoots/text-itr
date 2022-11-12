@@ -1,0 +1,19 @@
+---
+title: "Text ITR Initial Analysis"
+author: "Madison Coots and Jack Deschler"
+output: pdf_document
+header-include: 
+  - \newcommand\E{\mathbb{E}}
+  - \newcommand\V{\mathbb{V}}
+  - \newcommand\cN{\mathcal{N}}
+editor_options: 
+  chunk_output_type: console
+---
+
+## Coots/Deschler Final Project Initial Analysis
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
