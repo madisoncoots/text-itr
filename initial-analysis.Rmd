@@ -26,6 +26,10 @@ df <- read_dta("TextMessageData.dta")
 # Create Treatment column (original does not work for some reason)
 df$Treatment <- df$consequences + df$planmaking + df$combination
 
+# Flip FTA because a success is actually appearing
+df$success <- 1 - df$FTA
+
+
 control <- df[df$Treatment == 0,]
 treated_overall <- df[df$Treatment == 1,]
 cons <- df[df$consequences == 1,]
@@ -53,17 +57,22 @@ Combination & [.305, 1] & [.584, .721]
 
 ### Individualized Treatment Rules
 The main focus of our analysis is to identify various individualized treatment rules ("ITRs"), and compare them to the experimental results using techniques from Imai and Li (2021).
-- Simple ITR - by borough (what is the best we can do?)
-- Simple ITR - by racial composition (what is the best we can do?)
-- ITR from Imai and Strauss (2011)?
-- ML ITR
+
+* Simple ITR - by borough (what is the best we can do?)
+* Simple ITR - by racial composition (what is the best we can do?)
+* ITR from Imai and Strauss (2011)?
+* ML ITR
 
 ### Exploratory stuff
 ```{r include = F}
 # Function to easily extract appearance rates
-appearance_rate_by_demo <- function(data, treatment, demo = "All", threshold = 0.5, places = 3) {
-  if (demo == "All")
-    tmp <- tmp <- data[which(data[treatment] == 1),]
+appearance_rate_by_demo <- function(data, treatment = "All", demo = "All", threshold = 0.5, places = 3) {
+  if (demo == "All" & treatment == 'All')
+    tmp <- data
+  else if (demo == "All")
+    tmp <- data[which(data[treatment] == 1),]
+  else if  (treatment == "All")
+    tmp <- data[which(data[demo] > threshold),]
   else
     tmp <- data[which(data[demo] > threshold & data[treatment] == 1),]
   return(round(1 - (sum(tmp$FTA) / nrow(tmp)), places))
@@ -74,23 +83,59 @@ appearance_rate_by_demo <- function(data, treatment, demo = "All", threshold = 0
 The original dataset did not contain a variable for the race of an individual, but did contain the percentage of the population in each individual's ZIP code that was either black or Hispanic. We can construct a approximation of an individual's race by coding someone as, for example, black if more than 50% of the population in that ZIP code was black. We can do the same based on the percentage below the poverty line column. One could argue that we should actually be using a lower threshold than 50% given that communities of color and poor communities tend to be overpoliced, but without further data, we stick to the 50% threshold. The table below summarizes the appearance rates for various demographics in the data, using the heuristic just described.
 
 ```{r include=F}
+# Demographic Breakdowns
 df2 <- df
 df2['Male'] = 1 - df2$Female
 df2['PctBlackHispZip'] = df2$PctBlackZip + df2$PctHispZip
 demos = c('Male', "Female", "PctBlackZip", "PctHispZip", "PctBlackHispZip", "PctBelowPovZip")
-res <- matrix(data = 0, nrow = length(demos), ncol = 3)
+res <- matrix(data = 0, nrow = length(demos), ncol = 4)
 for (d in  1:length(demos)) {
-  res[d, 1] <- appearance_rate_by_demo(df2, "planmaking", demo = demos[d])
-  res[d, 2] <- appearance_rate_by_demo(df2, "consequences", demo = demos[d])
-  res[d, 3] <- appearance_rate_by_demo(df2, "combination", demo = demos[d])
+  res[d, 1] <- appearance_rate_by_demo(df2, demo = demos[d])
+  res[d, 2] <- appearance_rate_by_demo(df2, treatment = "planmaking", demo = demos[d])
+  res[d, 3] <- appearance_rate_by_demo(df2, treatment = "consequences", demo = demos[d])
+  res[d, 4] <- appearance_rate_by_demo(df2, treatment = "combination", demo = demos[d])
 }
 ```
-\begin{tabular}{l r | c c c}
-Demo. & Group & Planmaking & Consequences & Combination \\ \hline
-Gender & Male & `r res[1,1]` & `r res[1,2]` & `r res[1,3]` \\
- & Female & `r res[2,1]` & `r res[2,2]` & `r res[2,3]`  \\ \hline
-Race & Black & `r res[3,1]` & `r res[3,2]` & `r res[3,3]`  \\
- & Hispanic & `r res[4,1]` & `r res[5,2]` & `r res[5,3]`  \\
- & Black or Hispanic & `r res[5,1]` & `r res[5,2]` & `r res[5,3]`  \\ \hline
-Poverty & Below Poverty Line & `r res[6,1]` & `r res[6,2]` & `r res[6,3]` 
+\begin{tabular}{l r | c | c c c}
+Demo. & Group & Overall & Planmaking & Consequences & Combination \\ \hline
+Gender & Male & `r res[1,1]` & `r res[1,2]` & `r res[1,3]` & `r res[1,4]` \\
+ & Female & `r res[2,1]` & `r res[2,2]` & `r res[2,3]` & `r res[2,4]` \\ \hline
+Race & Black & `r res[3,1]` & `r res[3,2]` & `r res[3,3]` & `r res[3,4]` \\
+ & Hispanic & `r res[4,1]` & `r res[4,2]` & `r res[5,3]` & `r res[4,4]` \\
+ & Black or Hispanic & `r res[5,1]` & `r res[5,2]` & `r res[5,3]` & `r res[5,4]` \\ \hline
+Poverty & Below Poverty Line & `r res[6,1]` & `r res[6,2]` & `r res[6,3]` & `r res[5,4]`
 \end{tabular}
+
+\smallskip
+
+We can likewise break down the appearance rate by NYC borough:
+
+```{r include=F}
+# Demographic Breakdowns
+df2 <- df
+demos = c('Bronx', "Brooklyn", "Manhattan", "Queens", "StatenIsland")
+res <- matrix(data = 0, nrow = length(demos), ncol = 5)
+for (d in  1:length(demos)) {
+  res[d, 1] <- appearance_rate_by_demo(df2, demo = demos[d])
+  res[d, 2] <- appearance_rate_by_demo(df2, treatment = "Treatment", demo = demos[d])
+  res[d, 3] <- appearance_rate_by_demo(df2, treatment = "planmaking", demo = demos[d])
+  res[d, 4] <- appearance_rate_by_demo(df2, treatment = "consequences", demo = demos[d])
+  res[d, 5] <- appearance_rate_by_demo(df2, treatment = "combination", demo = demos[d])
+}
+```
+\begin{tabular}{r | c | c | c c c}
+Borough & Overall & Any Treatment & Planmaking & Consequences & Combination \\ \hline
+The Bronx & `r res[1,1]` & `r res[1,2]` & `r res[1,3]` & `r res[1,4]` & `r res[1,5]` \\
+Brooklyn & `r res[2,1]` & `r res[2,2]` & `r res[2,3]` & `r res[2,4]` & `r res[2,5]` \\ 
+Manhattan & `r res[3,1]` & `r res[3,2]` & `r res[3,3]` & `r res[3,4]` & `r res[3,5]`  \\
+Queens & `r res[4,1]` & `r res[4,2]` & `r res[4,3]` & `r res[4,4]` & `r res[4,5]`  \\
+Staten Island & `r res[5,1]` & `r res[5,2]` & `r res[5,3]` & `r res[5,4]` & `r res[5,5]`
+\end{tabular}
+
+TODO interpret
+
+```{r include = FALSE}
+# text everyone in Staten Island as a rule to test with
+df_boroughs <- df[!is.na(df$StatenIsland),]
+PAPE(df_boroughs$Treatment, df_boroughs$StatenIsland, df_boroughs$success, centered = FALSE)
+```
