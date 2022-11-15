@@ -21,6 +21,9 @@ library(haven)
 # read data
 df <- read_dta("~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/Replication package/Field experiment data and code/TextMessageData.dta")
 
+# subset to only those with the newform?
+df <- df[df$NewForm == 1,]
+
 # Create Treatment column (original does not work for some reason)
 df$Treatment <- df$consequences + df$planmaking + df$combination
 
@@ -48,9 +51,9 @@ Using the repro, we can then write the range of  possible appearance rates under
 
 \begin{tabular}{r | l l}
 Treatment & No assumption & Monotonicity assumption \\ \hline
-Planmaking & [.266, 1] & [.584,.682] \\
-Consequences & [.294, 1] & [.584, .710] \\
-Combination & [.305, 1] & [.584, .721]
+Planmaking & [.275, 1] & [.593,.682] \\
+Consequences & [.303, 1] & [.593, .710] \\
+Combination & [.314, 1] & [.593, .721]
 \end{tabular}
 
 ### Individualized Treatment Rules
@@ -183,18 +186,18 @@ library(grf)
 # covariate set, leave one borough out
 # offense-based covariates
 X_offense <- c("StatenIsland", "Bronx", "Brooklyn", "Queens", "Park", "Alcohol", "Marijuana",
-               "DisorderlyAcvtive", "DisorderlyPassive", "Disorderly", "Bike", "Noise",
+               "DisorderlyActive", "DisorderlyPassive", "Disorderly", "Bike", "Noise",
                "MotorVehicle", "Urination")
 # individual-vased covariates
-X_perp <- c("Female", "Age", "PastFTA", "NbPastFTA", "NbSummons",  "PastSummons", 
+X_perp <- c("Female", "Age", "PastFTA", "NbPastFTA", "NbPastSummons",  "PastSummons", 
             "MedianIncZip", "PctBlackZip", "PctHispZip", "PctBelowPovZip", "DOW")
 # all covariates
-X_full <- c(X_offense, X_other)
+X_full <- c(X_offense, X_perp)
 
 # fit forests
-forest_bin_full<- causal_forest(df[X_full], as.vector(df$success), as.vector(df$Treatment))
-forest_bin_offense<- causal_forest(df[X_offense], as.vector(df$success), as.vector(df$Treatment))
-forest_bin_perp<- causal_forest(df[X_perp], as.vector(df$success), as.vector(df$Treatment))
+forest_bin_full <- causal_forest(df[X_full], as.vector(df$success), as.vector(df$Treatment), num.trees = 100)
+forest_bin_offense<- causal_forest(df[X_offense], as.vector(df$success), as.vector(df$Treatment), num.trees = 100)
+forest_bin_perp<- causal_forest(df[X_perp], as.vector(df$success), as.vector(df$Treatment), num.trees = 100)
 
 tau_hat <- predict(forest)$predictions
 pred <- predict(forest, estimate.variance = TRUE)
