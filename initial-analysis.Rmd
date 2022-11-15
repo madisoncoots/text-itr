@@ -134,8 +134,69 @@ Staten Island & `r res[5,1]` & `r res[5,2]` & `r res[5,3]` & `r res[5,4]` & `r r
 
 TODO interpret
 
+## For First Write-up
+
 ```{r include = FALSE}
-# text everyone in Staten Island as a rule to test with
+# test DF with simple ITR:
+# - SI gets planmaking
+# - Bronx gets consequences
+# - Brooklyn gets combination
+# - Manhattan and Queens are control
+
 df_boroughs <- df[!is.na(df$StatenIsland),]
-PAPE(df_boroughs$Treatment, df_boroughs$StatenIsland, df_boroughs$success, centered = FALSE)
+df_boroughs$itr_plan <- df_boroughs$StatenIsland
+df_boroughs$itr_cons <- df_boroughs$Bronx
+df_boroughs$itr_combo <- df_boroughs$Brooklyn
+
+pape_matrix <- function(d, itr_cols = c('itr_plan', 'itr_cons', 'itr_combo')) {
+  itr_treat <- d$itr_plan + d$itr_cons + d$itr_combo
+  appeared <- 1 - d$FTA
+
+  names <- list("Any Text", "Planmaking", "Consequences", "Combination")
+  orig <- data.frame(d$Treatment, d$planmaking, d$consequences, d$combination)
+  itr <- data.frame(itr_treat, d[itr_cols[1]], d[itr_cols[2]], d[itr_cols[3]])
+  pape_mat <- matrix(nrow = 4, ncol = 4, c(names, names))
+  sd_mat <- matrix(nrow = 4, ncol = 4, c(names, names))
+  for (r in 1:length(names)) {
+    for (c in 1:length(names)) {
+      if (r == c) {
+        pape_mat[r,c] = 0
+        sd_mat[r,c] = 0
+      }
+      else {
+        p = PAPE(orig[,r], itr[,c], appeared, centered = FALSE)
+        pape_mat[r,c] <- p$pape
+        sd_mat[r,c] <- p$sd
+      }
+    }
+  }
+  rownames(pape_mat) <- names
+  colnames(pape_mat) <- names
+  rownames(sd_mat) <- names
+  colnames(sd_mat) <- names
+  return(tibble(pape = pape_mat, sd = sd_mat))
+}
+p <- pape_matrix(df_boroughs)
 ```
+
+## First Causal Forest Attempt - Binary
+```{r eval=FALSE}
+library(grf)
+# covariate set, leave one borough out
+X <- c("Female", "Age", "PastFTA", "StatenIsland", "Bronx", "Brooklyn", "Queens", 
+       "PastSummons", "MedianIncZip", "PctBlackZip", "PctHispZip", "PctBelowPovZip")
+
+forest <- causal_forest(df[X], as.vector(df$success), as.vector(df$Treatment))
+tau_hat <- predict(forest)$predictions
+pred <- predict(forest, estimate.variance = TRUE)
+```
+
+## Multi-arm Causal Forest Attempt
+```{r}
+# create single treatment array, 1 is planmaking, 2 is consequences, 3 is combo
+treat_type <- df$planmaking + 2*df$consequences + 3*df$combination
+multi_arm <- multi_arm_causal_forest(df[X], as.vector(df$success), factor(treat_type))
+tau_hat_multi <- predict(multi_arm)$predictions
+```
+
+
