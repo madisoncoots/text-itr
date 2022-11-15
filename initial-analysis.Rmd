@@ -195,14 +195,64 @@ X_perp <- c("Female", "Age", "PastFTA", "NbPastFTA", "NbPastSummons",  "PastSumm
 X_full <- c(X_offense, X_perp)
 
 # fit forests
-forest_bin_full <- causal_forest(df[X_full], as.vector(df$success), as.vector(df$Treatment), num.trees = 100)
-forest_bin_offense<- causal_forest(df[X_offense], as.vector(df$success), as.vector(df$Treatment), num.trees = 100)
-forest_bin_perp<- causal_forest(df[X_perp], as.vector(df$success), as.vector(df$Treatment), num.trees = 100)
+trees <- 1000
+forest_bin_full <- causal_forest(df[X_full], as.vector(df$success), 
+                                 as.vector(df$Treatment), num.trees = trees)
+forest_bin_offense <- causal_forest(df[X_offense], as.vector(df$success),
+                                    as.vector(df$Treatment), num.trees = trees)
+forest_bin_perp <- causal_forest(df[X_perp], as.vector(df$success), 
+                                 as.vector(df$Treatment), num.trees = trees)
 
-tau_hat <- predict(forest)$predictions
-pred <- predict(forest, estimate.variance = TRUE)
+
+# create dataframe of predictions
+forests <- list(forest_bin_full, forest_bin_offense, forest_bin_perp)
+names <- c("All", "Offense", "Perpetrator")
+res_df <- data.frame(matrix(NA, nrow = nrow(df), ncol = 0))
+for (n in 1:length(names)) {
+  f <- forests[[n]]
+  pred <- predict(f, estimate.variance = TRUE)
+  taus <- pred$predictions
+  vars <- pred$variance.estimates
+  res_df[paste(names[n], "_Est", sep = '')] <- taus
+  res_df[paste(names[n], "_Var", sep = '')] <- vars
+}
+# write csv of all forests
+write.csv(res_df, paste("~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/binary_", trees,
+                        "trees_results.csv", sep = ''), row.names = FALSE)
 ```
 
+### Calculate actual ITRs from the forests
+```{r eval=FALSE}
+trees = c(100, 500, 1000)
+res <- read.csv(paste("~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/binary_", trees,
+                        "trees_results.csv", sep = ''))
+names <- c("All", "Offense", "Perpetrator")
+itrs <- data.frame(matrix(NA, nrow = nrow(res), ncol = 0))
+
+for (t in trees) {
+  for (n in names) {
+    taus <- res[paste(n, "_Est", sep = '')]
+    vars <- res[paste(n, "_Var", sep = '')]
+    itrs[paste(n, "_simple_", t, sep = '')] <- as.numeric(taus > 0)
+    itrs[paste(n, "_harmless_", t, sep = '')] <- as.numeric(taus - (1.96 * sqrt(vars)) > 0)
+  }
+}
+
+write.csv(itrs, "~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/binary_itrs.csv", row.names = FALSE)
+```
+
+### Calculate PAPE for binary ITRs
+```{r}
+itrs <- read.csv("~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/binary_itrs.csv")
+papes <- c()
+sds <- c()
+for (r in colnames(itrs)) {
+  papelist <- PAPE(df$Treatment, itrs[,r], df$success, centered = FALSE)
+  papes <- c(papes, papelist$pape)
+  sds <- c(sds, papelist$sd)
+}
+pape_df = data.frame(colnames(itrs), papes, sds)
+```
 ## Multi-arm Causal Forest Attempt
 ```{r eval=FALSE}
 # create single treatment array, 1 is planmaking, 2 is consequences, 3 is combo
