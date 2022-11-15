@@ -18,10 +18,8 @@ library(evalITR)
 library(dplyr)
 library(haven)
 
-setwd('~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/Replication package/Field experiment data and code/')
-
 # read data
-df <- read_dta("TextMessageData.dta")
+df <- read_dta("~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/Replication package/Field experiment data and code/TextMessageData.dta")
 
 # Create Treatment column (original does not work for some reason)
 df$Treatment <- df$consequences + df$planmaking + df$combination
@@ -183,19 +181,30 @@ p <- pape_matrix(df_boroughs)
 ```{r eval=FALSE}
 library(grf)
 # covariate set, leave one borough out
-X <- c("Female", "Age", "PastFTA", "StatenIsland", "Bronx", "Brooklyn", "Queens", 
-       "PastSummons", "MedianIncZip", "PctBlackZip", "PctHispZip", "PctBelowPovZip")
+# offense-based covariates
+X_offense <- c("StatenIsland", "Bronx", "Brooklyn", "Queens", "Park", "Alcohol", "Marijuana",
+               "DisorderlyAcvtive", "DisorderlyPassive", "Disorderly", "Bike", "Noise",
+               "MotorVehicle", "Urination")
+# individual-vased covariates
+X_perp <- c("Female", "Age", "PastFTA", "NbPastFTA", "NbSummons",  "PastSummons", 
+            "MedianIncZip", "PctBlackZip", "PctHispZip", "PctBelowPovZip", "DOW")
+# all covariates
+X_full <- c(X_offense, X_other)
 
-forest <- causal_forest(df[X], as.vector(df$success), as.vector(df$Treatment))
+# fit forests
+forest_bin_full<- causal_forest(df[X_full], as.vector(df$success), as.vector(df$Treatment))
+forest_bin_offense<- causal_forest(df[X_offense], as.vector(df$success), as.vector(df$Treatment))
+forest_bin_perp<- causal_forest(df[X_perp], as.vector(df$success), as.vector(df$Treatment))
+
 tau_hat <- predict(forest)$predictions
 pred <- predict(forest, estimate.variance = TRUE)
 ```
 
 ## Multi-arm Causal Forest Attempt
-```{r}
+```{r eval=FALSE}
 # create single treatment array, 1 is planmaking, 2 is consequences, 3 is combo
 treat_type <- df$planmaking + 2*df$consequences + 3*df$combination
-multi_arm <- multi_arm_causal_forest(df[X], as.vector(df$success), factor(treat_type))
+multi_arm <- multi_arm_causal_forest(df[X_full], as.vector(df$success), factor(treat_type))
 tau_hat_multi <- predict(multi_arm)$predictions
 ```
 
