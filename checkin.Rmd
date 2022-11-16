@@ -1,0 +1,418 @@
+---
+title: "Individualized Treatment Rules for Text Reminders for Upcoming Court Appearances"
+author: Madison Coots and Jack Deschler
+output: pdf_document
+date: November 16, 2022
+header-include: 
+  - \usepackage{setspace}\doublespacing
+  - \newcommand\E{\mathbb{E}}
+  - \newcommand\V{\mathbb{V}}
+  - \newcommand\cN{\mathcal{N}}
+editor_options: 
+  chunk_output_type: console
+urlcolor: blue
+---
+
+\begin{center}
+\textbf{Abstract}
+\end{center}
+Using data from a 2020 study exploring the effects of text messaging on increasing appearance rates for mandatory court appearances, we explore the effectiveness of various individualized treatment rules (ITRs). We develop ITRs for the binary decision of whether or not to treat (text) defendants in the study data, as well as ITRs for the multi-arm treatment decision of what kind of messaging strategy to use for each defendant. To this end, we explore the use of a number of different existing strategies for developing ITRs, including the use of decision trees, and evaluate their performance in this setting.
+
+
+
+
+# Background
+## Prior Work
+In 2020, [Fishbane et al.](https://www.science.org/doi/10.1126/science.abb6591) published the results of an experiment conducted in New York to explore the causal effects of nudges in the criminal justice context. The authors were interested in understanding whether text message reminders regarding an individual’s upcoming mandatory court appearance could help that individual avoid a failure to appear (FTA). Ultimately, they found that providing text message reminders increased the likelihood that defendants would show up to their appointed court date, thus eliminating a substantial percentage of arrest warrants for failing to appear in court.
+
+In addition to conducting experiments probing the effects of text reminders generally, the authors also experimented with employing different messaging strategies. Among the clients randomly selected to receive text messages, clients were again randomized across three different text message arms. Clients in the first arm received text reminders that emphasized the adverse consequences of missing a court appearance, clients in the second arm received messages that emphasized and encouraged clients to plan for their upcoming appearance, and clients in the third arm received messages that were a combination of the two previous messaging approaches.
+
+## Motivation
+In the U.S. criminal justice system, failing to appear for mandatory court appearances can result in severe consequences for the defendant. Many courts will issue a bench warrant for a defendant's arrest if they fail to appear, which means that the defendant may be taken to and held in jail the next time they come into contact with courts or law enforcement. Helping clients remember their upcoming mandatory court appointments therefore emerges as a low cost and effective method for helping people avoid pretrial incarceration and its collateral consequences on families and communities.
+
+Given the high stakes associated with missing a court appearance, it is imperative that efforts to remind defendants of their appointments via text do not unintentionally discourage clients from appearing in court. In particular, while highlighting the negative consequences of missing court in the text reminders may motivate certain types of defendants to appear, that same framing may discourage other defendants. In particular, defendants from communities that are disproportionately impacted by policing might have a pre-existing distrust of the system, and highlighting the negative consequences of missing a court appearance may further deepen a sense of fear and distrust about engaging with the system. To address this potential heterogeneity in the way defendants may respond to different messaging strategies, an exploration of individualized treatment rules is warranted in this setting.
+
+## Methods
+Prior work on ITR's / what we're drawing from
+Describe causal forest 
+Describe the Imai, Li paper which provides way to evaluate ITR
+
+Imai and Li (2019) propose another metric to evaluate ITRs, the Area Under the Prescriptive Effect Curve, or AUPEC. The AUPEC for an ITR is the integral of the the PAPE for all budget constraints. As such, our paper focuses on the PAPE and does not deal with AUPEC to evaluate our ITRs. Unlike the treatments considered by Imai and Li, text messages are extremely low cost, and so a budget constraint makes little sense in this particular setting. Since there is little to no budget constraint, it likewise makes little sense to determine the PAPE across all possible budget constraints, and so we ignore AUPEC.
+
+# Data Summary
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# libraries and setup
+library(evalITR)
+library(dplyr)
+library(haven)
+library(kableExtra)
+
+# read data
+df <- read_dta("/Users/madisoncoots/Documents/harvard/research/fishbane/Replication package/Field experiment data and code/TextMessageData.dta")
+
+# subset to only those with the newform?
+df <- df[df$NewForm == 1,]
+
+# Create Treatment column (original does not work for some reason)
+df$Treatment <- df$consequences + df$planmaking + df$combination
+
+# Flip FTA because a success is actually appearing
+df$success <- 1 - df$FTA
+
+
+control <- df[df$Treatment == 0,]
+treated_overall <- df[df$Treatment == 1,]
+cons <- df[df$consequences == 1,]
+plan <- df[df$planmaking == 1,]
+combo <- df[df$combination == 1,]
+```
+
+
+```{r include = F}
+# Function to easily extract appearance rates
+appearance_rate_by_demo <- function(data, treatment = "All", demo = "All", threshold = 0.5, places = 3) {
+  if (demo == "All" & treatment == 'All')
+    tmp <- data
+  else if (demo == "All")
+    tmp <- data[which(data[treatment] == 1),]
+  else if  (treatment == "All")
+    tmp <- data[which(data[demo] > threshold),]
+  else
+    tmp <- data[which(data[demo] > threshold & data[treatment] == 1),]
+  return(round(1 - (sum(tmp$FTA) / nrow(tmp)), places))
+}
+```
+
+The authors of Fishbane et al. released a rich dataset of their study results that inlcuded a number of informative covariates on each study participant. The covariates included demographic information for each defendant, as well as limited criminal history information (relating to past summons and past failures to appear in court), and details about the offense that resulted in the defendant's court summons.
+
+As a preliminary step, we examine the overall appearance rates that resulted from employing one of the four text message treatment arms. These results are shown in Table 1. We observe that the combination messaging strategy yielded the highest appearance rate.
+
+```{r echo = FALSE}
+
+no_text <- c(nrow(control) - sum(control$FTA), sum(control$FTA), round(1 - (sum(control$FTA)/nrow(control)), 3))
+planning <- c(nrow(plan) - sum(plan$FTA), sum(plan$FTA), round(1 - (sum(plan$FTA)/nrow(plan)), 3))
+consequences <- c(nrow(cons) - sum(cons$FTA), sum(cons$FTA), round(1 - (sum(cons$FTA)/nrow(cons)), 3))
+combination <- c(nrow(combo) - sum(combo$FTA), sum(combo$FTA), round(1 - (sum(combo$FTA)/nrow(combo)), 3))
+overall <- c(nrow(df) - sum(df$FTA), sum(df$FTA), round(1 - (sum(df$FTA)/nrow(df)), 3))
+
+data.frame(no_text,
+           planning,
+           consequences, 
+           combination, 
+           overall) %>%
+  `rownames<-`(c("Appeared", "Failed to appear", "Appearance rate")) %>%
+  knitr::kable(col.names = c("No text", "Planning", "Consequences", "Combination", "Overall"),
+               caption = "Conditional appearance rates for each treatment arm") %>%
+  kable_styling(latex_options = "HOLD_position") %>%
+  row_spec(3,bold=T)
+```
+
+We also examine appearance rates along a number of different demographic dimensions, including gender, race, and poverty level. We note that the original dataset does not contain a variable for the race of an individual, but instead contains the percentage of the population in each individual's zip code that is either Black or Hispanic. Ideally, we would impute race by sampling a race label for each defendant according to the distribution of their zip code. However, the breakdown supplied in the data is not a distribution, so we cannot employ this method of imputing race. As a (temporary) workaround, we can construct an approximation of an individual's race by coding someone as, for example, Black if more than 50% of the population in that ZIP code was Black. We can do the same based on the percentage below the poverty line column. The table below summarizes the appearance rates for various demographics in the data, using the heuristic just described.
+
+```{r include=F}
+# Demographic Breakdowns
+df2 <- df
+df2['Male'] = 1 - df2$Female
+df2['PctBlackHispZip'] = df2$PctBlackZip + df2$PctHispZip
+demos = c('Male', "Female", "PctBlackZip", "PctHispZip", "PctBlackHispZip", "PctBelowPovZip")
+res <- matrix(data = 0, nrow = length(demos), ncol = 4)
+for (d in  1:length(demos)) {
+  res[d, 1] <- appearance_rate_by_demo(df2, demo = demos[d])
+  res[d, 2] <- appearance_rate_by_demo(df2, treatment = "planmaking", demo = demos[d])
+  res[d, 3] <- appearance_rate_by_demo(df2, treatment = "consequences", demo = demos[d])
+  res[d, 4] <- appearance_rate_by_demo(df2, treatment = "combination", demo = demos[d])
+}
+```
+
+```{r}
+demographic <- c("Gender", "Gender", "Race", "Race", "Race", "Poverty")
+group <- c("Male", "Female", "Black", "Hispanic", "Black or Hispanic", "Below Poverty Line")
+overall <- c(res[1,1], res[2,1], res[3,1], res[4,1], res[5,1], res[6,1])
+planmaking <- c(res[1,2], res[2,2], res[3,2], res[4,2], res[5,2], res[6,2])
+consequences <- c(res[1,3], res[2,3], res[3,3], res[4,3], res[5,3], res[6,3])
+combination <- c(res[1,4], res[2,4], res[3,4], res[4,4], res[5,4], res[6,4])
+
+data.frame(demographic,
+           group,
+           overall,
+           planmaking,
+           consequences,
+           combination) %>%
+  knitr::kable(col.names = c("Demographic",
+                             "Group",
+                             "Overall",
+                             "Planmaking",
+                             "Consequences",
+                             "Combination"),
+               caption = "Conditional appearance rates for each treatment arm for different demographic groups") %>%
+  kable_styling(latex_options = "HOLD_position")
+```
+
+\smallskip
+
+We can likewise break down the appearance rate by NYC borough:
+
+```{r include=F}
+# Demographic Breakdowns
+df2 <- df
+demos = c('Bronx', "Brooklyn", "Manhattan", "Queens", "StatenIsland")
+res <- matrix(data = 0, nrow = length(demos), ncol = 5)
+for (d in  1:length(demos)) {
+  res[d, 1] <- appearance_rate_by_demo(df2, demo = demos[d])
+  res[d, 2] <- appearance_rate_by_demo(df2, treatment = "Treatment", demo = demos[d])
+  res[d, 3] <- appearance_rate_by_demo(df2, treatment = "planmaking", demo = demos[d])
+  res[d, 4] <- appearance_rate_by_demo(df2, treatment = "consequences", demo = demos[d])
+  res[d, 5] <- appearance_rate_by_demo(df2, treatment = "combination", demo = demos[d])
+}
+```
+\begin{tabular}{r | c | c | c c c}
+Borough & Overall & Any Treatment & Planmaking & Consequences & Combination \\ \hline
+The Bronx & `r res[1,1]` & `r res[1,2]` & `r res[1,3]` & `r res[1,4]` & `r res[1,5]` \\
+Brooklyn & `r res[2,1]` & `r res[2,2]` & `r res[2,3]` & `r res[2,4]` & `r res[2,5]` \\ 
+Manhattan & `r res[3,1]` & `r res[3,2]` & `r res[3,3]` & `r res[3,4]` & `r res[3,5]`  \\
+Queens & `r res[4,1]` & `r res[4,2]` & `r res[4,3]` & `r res[4,4]` & `r res[4,5]`  \\
+Staten Island & `r res[5,1]` & `r res[5,2]` & `r res[5,3]` & `r res[5,4]` & `r res[5,5]`
+\end{tabular}
+
+TODO interpret
+
+# Preliminary Results
+
+## Binary Causal Forest
+
+We fit causal forests of three different sizes (100, 500, and 1000 trees) to generate individualized treatment rules for the binary treatment decision (text reminders of any kind, or no texts). For each forest, we also experimented with three different sets of covariates: offense-based, defendant-based, and a combination of these two sets. The first set contains covariates characterizing the offense that resulted in the court summons, the second set characterizes the defendant in terms of demographics and criminal history, and the third is simply the union of these first two sets. We list the comprising covariates of each set below:
+
+- Offense-based: 1) borough of the offense, 2) whether the offense took place in the park after dark, 3) whether the offense involved alcohol or 4) marijuana, 5) whether the offense involved passive or 6) active disorderly conduct, 7) whether the offense was biking on the sidewalk, 8) unreasonable noise, 9) reckless driving, or 10) public urination.
+- Defendant-based: 1) gender, 2) age, 3) whether the person has failed to appear in court in the past, 4) the number of past failures to appear, 5) whether the person has received a court summons in the past, 6) the number of past court summons, 7) the median income of their residential zip code, 8) the percentage of Black and 9) Hispanic residents in the defendant's residential zip code, and 10) the population percentage that is below the poverty line in the defendant's zip code
+
+After fitting the causal forests to the study data, we also used two different methods of generating individualized treatment rules from the resulting models: simple, and strict. To implement the simple treatment rule, we simply examine the \textcolor{red}{??????} for each defendant in the data and treat them if it is greater than 0. To implement the strict treatment rule, we reason that to ensure that we do no harm to the defendant by texting them, a 95\% confidence interval around the \textcolor{red}{??????} should \textit{not} contain 0. If this is true, then we treat them.
+
+In the table below, we show the PAPE its standard deviation of each of the ITRs generated by the methodology described above. From these results, we see that the causal forests trained using the offense-based covariates with the strict method are the highest performing.
+
+
+```{r echo = FALSE}
+results_path <- "/Users/madisoncoots/Documents/harvard/coursework/gov2003/text-itr/binaryITR_pape.csv"
+binary_itr_results <- read.csv(results_path)
+
+binary_itr_results %>%
+  mutate(covariates = case_when(covariates == "Offense" ~ "Offense-based",
+                                covariates == "Perpetrator" ~ "Defendant-based",
+                                TRUE ~ covariates),
+         rule = case_when(rule == "simple" ~ "Simple",
+                          rule == "harmless" ~ "Strict",
+                          TRUE ~ rule),
+         papes = round(papes, digits = 4),
+         sds = round(sds, digits = 4)) %>%
+  select(numtrees, covariates, rule, papes, sds) %>%
+  arrange(desc(papes)) %>%
+  knitr::kable(col.names = c("No. of trees", "Covariate Set", "Treatment Rule", "PAPE", "Standard dev."),
+               caption = "Binary Causal Forest ITR PAPEs") %>%
+  kable_styling(latex_options = "HOLD_position")
+```
+
+
+
+## Multi-arm Causal Forest
+
+We also experimented with fitting a causal forest to generate a treatment rule for the multiarm version of the experiment: no texts, consequence-focused texts, planning-focused texts, or combination texts. Due to computational limitations we show the results for one causal forest only: 100 trees using all covariates and the strict method for generating the ITRs. Furthermore, because this causal forest generates a multiarm treatment rule, the output is best interpreted through a matrix, where the interpretation of a given entry is: \textcolor{red}{???????}. Below, we show the matrix of PAPEs for the multi-arm causal forest and its corresponding matrix of standard deviations of the PAPEs.
+
+From this result, we can see that, when compared to a purely randomized experiment, the ITR for the consequences text messaging strategy achieves the highest PAPE value ($\approx 0.0135$).
+
+\textcolor{red}{I feel like the more I stare at this matrix the less I understand it lol. Can you sanity check me on the interpretation above?}
+
+```{r echo = FALSE}
+
+row_names <- c("Any text", "Planning", "Consequences", "Combo")
+
+pape_matrix <- data.frame(any_text = c(0.01047226, 0.01150315, 0.0112156, 0.004948374),
+                          planning = c(-0.004180083, 0.001993335, -0.003877044, -0.01600147),
+                          consquences = c(0.005797335, -0.0001260121, 0.01348087, 0.000954789),
+                          combo = c(0.01090064, 0.01320184, 0.007252543, 0.0115389)) %>%
+  `rownames<-`(row_names)
+
+sd_matrix <- data.frame(any_text = c(0.003793225, 0.005854321, 0.005913416, 0.008414251),
+                          planning = c(0.002900054, 0.004554933, 0.004522923, 0.006186608),
+                          consquences = c(0.003466761, 0.005312291, 0.005462719, 0.007636758),
+                          combo = c(0.003105024, 0.004833518, 0.004808774, 0.006907275)) %>%
+  `rownames<-`(row_names)
+
+pape_matrix %>%
+  knitr::kable(col.names = row_names,
+               caption = "Multiarm Causal Forest ITR PAPEs") %>%
+  kable_styling(latex_options = "HOLD_position")
+
+sd_matrix %>%
+  knitr::kable(col.names = row_names,
+               caption = "Multiarm Causal Forest ITR Standard Deviations") %>%
+  kable_styling(latex_options = "HOLD_position")
+
+```
+
+
+
+# Future Work
+- Determine which forest is performing the best -- can we just take the one with the highest PAPE score?
+- Run a permutation test on the 5 boroughs testing which combination of messaging strategies is best. This has the benefit of being pretty interpretable.
+- Figure out a way to collapse the matrix to a measure
+- SVM
+
+-----------------------------
+
+
+
+Treating each treatment independently but with the same large control group, let $\pi_{jk}$ be the proportion of individuals in the principal stratum where $(Y_i(0), Y_i(1)) = (j,k)$. Then, for any set of constraints on the strata, we know that the possible range of the graduation rate, $G$ is $[\text{min}(\pi_{11}), \text{max}(1-\pi_{00})]$. Additionally, we can write the possible range if we make the monotonicity assumption
+Using the repro, we can then write the range of  possible appearance rates under each treatment type. Additionally, we can write the possible range if we make the monotonicity assumption $Y_i(1) \geq Y_i(0)$. For various reasons with this data, we believe the monotonicity assumption is not a good one to make. There are a multitude of theoretical mechanisms by which a text message could cause individuals to _not_ appear in court, thus resulting in $Y_i(0) > Y_i(1)$. These could include, but are not limited to, messages scaring individuals due to the consequential nature, TODO.
+
+\begin{tabular}{r | l l}
+Treatment & No assumption & Monotonicity assumption \\ \hline
+Planmaking & [.275, 1] & [.593,.682] \\
+Consequences & [.303, 1] & [.593, .710] \\
+Combination & [.314, 1] & [.593, .721]
+\end{tabular}
+
+### Individualized Treatment Rules
+The main focus of our analysis is to identify various individualized treatment rules ("ITRs"), and compare them to the experimental results using techniques from Imai and Li (2021).
+
+* Simple ITR - by borough (what is the best we can do?)
+* Simple ITR - by racial composition (what is the best we can do?)
+* ITR from Imai and Strauss (2011)?
+* ML ITR
+
+
+
+
+
+
+
+\pagebreak
+
+## For First Write-up
+
+```{r include = FALSE}
+# test DF with simple ITR:
+# - SI gets planmaking
+# - Bronx gets consequences
+# - Brooklyn gets combination
+# - Manhattan and Queens are control
+
+df_boroughs <- df[!is.na(df$StatenIsland),]
+df_boroughs$itr_plan <- df_boroughs$StatenIsland
+df_boroughs$itr_cons <- df_boroughs$Bronx
+df_boroughs$itr_combo <- df_boroughs$Brooklyn
+
+pape_matrix <- function(d, itr_cols = c('itr_plan', 'itr_cons', 'itr_combo')) {
+  itr_treat <- d$itr_plan + d$itr_cons + d$itr_combo
+  appeared <- 1 - d$FTA
+
+  names <- list("Any Text", "Planmaking", "Consequences", "Combination")
+  orig <- data.frame(d$Treatment, d$planmaking, d$consequences, d$combination)
+  itr <- data.frame(itr_treat, d[itr_cols[1]], d[itr_cols[2]], d[itr_cols[3]])
+  pape_mat <- matrix(nrow = 4, ncol = 4, c(names, names))
+  sd_mat <- matrix(nrow = 4, ncol = 4, c(names, names))
+  for (r in 1:length(names)) {
+    for (c in 1:length(names)) {
+      if (r == c) {
+        pape_mat[r,c] = 0
+        sd_mat[r,c] = 0
+      }
+      else {
+        p = PAPE(orig[,r], itr[,c], appeared, centered = FALSE)
+        pape_mat[r,c] <- p$pape
+        sd_mat[r,c] <- p$sd
+      }
+    }
+  }
+  rownames(pape_mat) <- names
+  colnames(pape_mat) <- names
+  rownames(sd_mat) <- names
+  colnames(sd_mat) <- names
+  return(tibble(pape = pape_mat, sd = sd_mat))
+}
+p <- pape_matrix(df_boroughs)
+```
+
+## First Causal Forest Attempt - Binary
+```{r eval=FALSE}
+library(grf)
+# covariate set, leave one borough out
+# offense-based covariates
+X_offense <- c("StatenIsland", "Bronx", "Brooklyn", "Queens", "Park", "Alcohol", "Marijuana",
+               "DisorderlyActive", "DisorderlyPassive", "Disorderly", "Bike", "Noise",
+               "MotorVehicle", "Urination")
+# individual-vased covariates
+X_perp <- c("Female", "Age", "PastFTA", "NbPastFTA", "NbPastSummons",  "PastSummons", 
+            "MedianIncZip", "PctBlackZip", "PctHispZip", "PctBelowPovZip", "DOW")
+# all covariates
+X_full <- c(X_offense, X_perp)
+
+# fit forests
+trees <- 1000
+forest_bin_full <- causal_forest(df[X_full], as.vector(df$success), 
+                                 as.vector(df$Treatment), num.trees = trees)
+forest_bin_offense <- causal_forest(df[X_offense], as.vector(df$success),
+                                    as.vector(df$Treatment), num.trees = trees)
+forest_bin_perp <- causal_forest(df[X_perp], as.vector(df$success), 
+                                 as.vector(df$Treatment), num.trees = trees)
+
+
+# create dataframe of predictions
+forests <- list(forest_bin_full, forest_bin_offense, forest_bin_perp)
+names <- c("All", "Offense", "Perpetrator")
+res_df <- data.frame(matrix(NA, nrow = nrow(df), ncol = 0))
+for (n in 1:length(names)) {
+  f <- forests[[n]]
+  pred <- predict(f, estimate.variance = TRUE)
+  taus <- pred$predictions
+  vars <- pred$variance.estimates
+  res_df[paste(names[n], "_Est", sep = '')] <- taus
+  res_df[paste(names[n], "_Var", sep = '')] <- vars
+}
+# write csv of all forests
+write.csv(res_df, paste("~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/binary_", trees,
+                        "trees_results.csv", sep = ''), row.names = FALSE)
+```
+
+### Calculate actual ITRs from the forests
+```{r eval=FALSE}
+trees = c(100, 500, 1000)
+res <- read.csv(paste("~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/binary_", trees,
+                        "trees_results.csv", sep = ''))
+names <- c("All", "Offense", "Perpetrator")
+itrs <- data.frame(matrix(NA, nrow = nrow(res), ncol = 0))
+
+for (t in trees) {
+  for (n in names) {
+    taus <- res[paste(n, "_Est", sep = '')]
+    vars <- res[paste(n, "_Var", sep = '')]
+    itrs[paste(n, "_simple_", t, sep = '')] <- as.numeric(taus > 0)
+    itrs[paste(n, "_harmless_", t, sep = '')] <- as.numeric(taus - (1.96 * sqrt(vars)) > 0)
+  }
+}
+
+write.csv(itrs, "~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/binary_itrs.csv", row.names = FALSE)
+```
+
+### Calculate PAPE for binary ITRs
+```{r}
+itrs <- read.csv("/Users/madisoncoots/Documents/harvard/coursework/gov2003/text-itr/binary_itrs.csv")
+papes <- c()
+sds <- c()
+for (r in colnames(itrs)) {
+  papelist <- PAPE(df$Treatment, itrs[,r], df$success, centered = FALSE)
+  papes <- c(papes, papelist$pape)
+  sds <- c(sds, papelist$sd)
+}
+pape_df = data.frame(colnames(itrs), papes, sds)
+```
+## Multi-arm Causal Forest Attempt
+```{r eval=FALSE}
+# create single treatment array, 1 is planmaking, 2 is consequences, 3 is combo
+treat_type <- df$planmaking + 2*df$consequences + 3*df$combination
+multi_arm <- multi_arm_causal_forest(df[X_full], as.vector(df$success), factor(treat_type))
+tau_hat_multi <- predict(multi_arm)$predictions
+```
+
+
