@@ -246,19 +246,39 @@ write.csv(itrs, "~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/binary_itrs
 itrs <- read.csv("~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/binary_itrs.csv")
 papes <- c()
 sds <- c()
+covariates <- c()
+rule <- c()
+numtrees <- c()
 for (r in colnames(itrs)) {
   papelist <- PAPE(df$Treatment, itrs[,r], df$success, centered = FALSE)
+  covariates <- c(covariates, strsplit(r, '_')[[1]][1])
+  rule <- c(rule, strsplit(r, '_')[[1]][2])
+  numtrees <- c(numtrees, strsplit(r, '_')[[1]][3])
   papes <- c(papes, papelist$pape)
   sds <- c(sds, papelist$sd)
 }
-pape_df = data.frame(colnames(itrs), papes, sds)
+pape_df = data.frame(covariates, numtrees, rule, papes, sds)
+write.csv(pape_df, "~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/binaryITR_pape.csv", row.names = F)
 ```
 ## Multi-arm Causal Forest Attempt
 ```{r eval=FALSE}
+trees <- c(100, 500, 1000)
 # create single treatment array, 1 is planmaking, 2 is consequences, 3 is combo
 treat_type <- df$planmaking + 2*df$consequences + 3*df$combination
-multi_arm <- multi_arm_causal_forest(df[X_full], as.vector(df$success), factor(treat_type))
-tau_hat_multi <- predict(multi_arm)$predictions
+
+multi_arm <- multi_arm_causal_forest(df[X_full], as.vector(df$success), 
+                                     factor(treat_type), num.trees = 100)
+preds <- predict(multi_arm, estimate.variance = T)
+taus <- preds$predictions[,,]
+vars <- preds$variance.estimates
+treat_mat <- matrix(0, nrow = nrow(vars), ncol = ncol(vars))
+for (r in 1:nrow(vars)) {
+  for (c in 1:ncol(vars)) {
+    treat_mat[r,c] <- as.numeric(taus[r,c] - 1.96 * sqrt(vars[r,c]) > 0)
+  }
+}
+treat_df <- data.frame(treat_mat)
+colnames(treat_df) <- c("planmaking", "consequences", "combination")
 ```
 
 
