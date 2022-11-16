@@ -137,20 +137,17 @@ TODO interpret
 
 ## For First Write-up
 
-```{r include = FALSE}
-# test DF with simple ITR:
-# - SI gets planmaking
-# - Bronx gets consequences
-# - Brooklyn gets combination
-# - Manhattan and Queens are control
+### PAPE Matrix testing
+```{r, include = F}
+# test DF with simple ITR based on highest appearance rate from above
 
 df_boroughs <- df[!is.na(df$StatenIsland),]
-df_boroughs$itr_plan <- df_boroughs$StatenIsland
-df_boroughs$itr_cons <- df_boroughs$Bronx
-df_boroughs$itr_combo <- df_boroughs$Brooklyn
+df_boroughs$itr_plan <- 0
+df_boroughs$itr_cons <- df_boroughs$StatenIsland
+df_boroughs$itr_combo <- df_boroughs$Brooklyn + df_boroughs$Bronx + df_boroughs$Queens + df_boroughs$Manhattan
 
 pape_matrix <- function(d, itr_cols = c('itr_plan', 'itr_cons', 'itr_combo')) {
-  itr_treat <- d$itr_plan + d$itr_cons + d$itr_combo
+  itr_treat <- as.numeric(d$itr_plan + d$itr_cons + d$itr_combo > 0)
   appeared <- 1 - d$FTA
 
   names <- list("Any Text", "Planmaking", "Consequences", "Combination")
@@ -160,15 +157,9 @@ pape_matrix <- function(d, itr_cols = c('itr_plan', 'itr_cons', 'itr_combo')) {
   sd_mat <- matrix(nrow = 4, ncol = 4, c(names, names))
   for (r in 1:length(names)) {
     for (c in 1:length(names)) {
-      if (r == c) {
-        pape_mat[r,c] = 0
-        sd_mat[r,c] = 0
-      }
-      else {
-        p = PAPE(orig[,r], itr[,c], appeared, centered = FALSE)
-        pape_mat[r,c] <- p$pape
-        sd_mat[r,c] <- p$sd
-      }
+      p = PAPE(orig[,r], itr[,c], appeared, centered = FALSE)
+      pape_mat[r,c] <- p$pape
+      sd_mat[r,c] <- p$sd
     }
   }
   rownames(pape_mat) <- names
@@ -179,6 +170,8 @@ pape_matrix <- function(d, itr_cols = c('itr_plan', 'itr_cons', 'itr_combo')) {
 }
 p <- pape_matrix(df_boroughs)
 ```
+Test PAPE matrix where we treat Staten Island with `planmaking`, the Bronx with `consequences`, and Brooklyn with `combination`. Queens and Manhattan are control groups. Each borough's treatment forms the ITR.
+
 
 ## First Causal Forest Attempt - Binary
 ```{r eval=FALSE}
@@ -242,7 +235,7 @@ write.csv(itrs, "~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/binary_itrs
 ```
 
 ### Calculate PAPE for binary ITRs
-```{r}
+```{r eval = FALSE}
 itrs <- read.csv("~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/binary_itrs.csv")
 papes <- c()
 sds <- c()
@@ -266,45 +259,51 @@ trees <- c(100, 500, 1000)
 covs <- c("All", "Offense", "Perpetrator")
 
 # create single treatment array, 1 is planmaking, 2 is consequences, 3 is combo
+t <- 1000
 treat_type <- df$planmaking + 2*df$consequences + 3*df$combination
-for (t in trees) {
-  treat_df <- data.frame(matrix(NA, nrow = nrow(df), ncol = 0))
-  for (cov in covs) {
-    # select covariates and fit model
-    if (c == "All") {
-      multi_arm <- multi_arm_causal_forest(df[X_full], as.vector(df$success), 
-                                         factor(treat_type), num.trees = r)
-    }
-    else if (c == "Offense") {
-      multi_arm <- multi_arm_causal_forest(df[X_offense], as.vector(df$success), 
-                                          factor(treat_type), num.trees = r)
-    }
-    else {
-      multi_arm <- multi_arm_causal_forest(df[X_perp], as.vector(df$success), 
-                                         factor(treat_type), num.trees = t)
-    }
-    
-    # create df of predictions
-    preds <- predict(multi_arm, estimate.variance = T)
-    taus <- preds$predictions[,,]
-    vars <- preds$variance.estimates
-    simple_mat <- matrix(0, nrow = nrow(vars), ncol = ncol(vars))
-    harmless_mat <- matrix(0, nrow = nrow(vars), ncol = ncol(vars))
-    for (r in 1:nrow(vars)) {
-      for (c in 1:ncol(vars)) {
-        simple_mat[r,c] <- as.numeric(taus[r,c] > 0)
-        harmless_mat[r,c] <- as.numeric(taus[r,c] - 1.96 * sqrt(vars[r,c]) > 0)
-      }
-    }
-    colnames <- c("planmaking", "consequences", "combination")
-    for (c in 1:length(colnames)) {
-      treat_df[paste(cov, t, colnames[c], "harmless", sep = '_')] = harmless_mat[,c]
-      treat_df[paste(cov, t, colnames[c], "simple", sep = '_')] = simple_mat[,c]
+treat_df <- data.frame(matrix(NA, nrow = nrow(df), ncol = 0))
+for (cov in c("Perpetrator")){
+  # select covariates and fit model
+  if (c == "All") {
+    multi_arm <- multi_arm_causal_forest(df[X_full], as.vector(df$success), 
+                                       factor(treat_type), num.trees = t)
+  }
+  else if (c == "Offense") {
+    multi_arm <- multi_arm_causal_forest(df[X_offense], as.vector(df$success), 
+                                        factor(treat_type), num.trees = t)
+  }
+  else {
+    multi_arm <- multi_arm_causal_forest(df[X_perp], as.vector(df$success), 
+                                       factor(treat_type), num.trees = t)
+  }
+  
+  # create df of predictions
+  preds <- predict(multi_arm, estimate.variance = T)
+  taus <- preds$predictions[,,]
+  vars <- preds$variance.estimates
+  simple_mat <- matrix(0, nrow = nrow(vars), ncol = ncol(vars))
+  harmless_mat <- matrix(0, nrow = nrow(vars), ncol = ncol(vars))
+  for (r in 1:nrow(vars)) {
+    for (c in 1:ncol(vars)) {
+      simple_mat[r,c] <- as.numeric(taus[r,c] > 0)
+      harmless_mat[r,c] <- as.numeric(taus[r,c] - 1.96 * sqrt(vars[r,c]) > 0)
     }
   }
-  write.csv(treat_df, paste("~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/multiarm-itrs/multiarm",
-                            t, "trees.csv", sep = '_'))
+  colnames <- c("planmaking", "consequences", "combination")
+  for (c in 1:length(colnames)) {
+    treat_df[paste(cov, t, colnames[c], "harmless", sep = '_')] = harmless_mat[,c]
+    treat_df[paste(cov, t, colnames[c], "simple", sep = '_')] = simple_mat[,c]
+  }
 }
+write.csv(treat_df, paste("~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/multiarm-itrs/multiarm",
+                          t, "trees.csv", sep = '_'), row.names = F)
 ```
-
-
+### Calculate PAPE-matrices from ITRs
+```{r}
+multi100 <- read.csv("~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/multiarm-itrs/multiarm_100_trees.csv")
+pmat_data <- df
+pmat_data$itr_plan <- multi100$All_100_planmaking_harmless
+pmat_data$itr_cons <- multi100$All_100_consequences_harmless
+pmat_data$itr_combo <- multi100$All_100_combination_harmless
+p <- pape_matrix(pmat_data)
+```
