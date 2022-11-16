@@ -263,22 +263,48 @@ write.csv(pape_df, "~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/binaryIT
 ## Multi-arm Causal Forest Attempt
 ```{r eval=FALSE}
 trees <- c(100, 500, 1000)
+covs <- c("All", "Offense", "Perpetrator")
+
 # create single treatment array, 1 is planmaking, 2 is consequences, 3 is combo
 treat_type <- df$planmaking + 2*df$consequences + 3*df$combination
-
-multi_arm <- multi_arm_causal_forest(df[X_full], as.vector(df$success), 
-                                     factor(treat_type), num.trees = 100)
-preds <- predict(multi_arm, estimate.variance = T)
-taus <- preds$predictions[,,]
-vars <- preds$variance.estimates
-treat_mat <- matrix(0, nrow = nrow(vars), ncol = ncol(vars))
-for (r in 1:nrow(vars)) {
-  for (c in 1:ncol(vars)) {
-    treat_mat[r,c] <- as.numeric(taus[r,c] - 1.96 * sqrt(vars[r,c]) > 0)
+for (t in trees) {
+  treat_df <- data.frame(matrix(NA, nrow = nrow(df), ncol = 0))
+  for (cov in covs) {
+    # select covariates and fit model
+    if (c == "All") {
+      multi_arm <- multi_arm_causal_forest(df[X_full], as.vector(df$success), 
+                                         factor(treat_type), num.trees = r)
+    }
+    else if (c == "Offense") {
+      multi_arm <- multi_arm_causal_forest(df[X_offense], as.vector(df$success), 
+                                          factor(treat_type), num.trees = r)
+    }
+    else {
+      multi_arm <- multi_arm_causal_forest(df[X_perp], as.vector(df$success), 
+                                         factor(treat_type), num.trees = t)
+    }
+    
+    # create df of predictions
+    preds <- predict(multi_arm, estimate.variance = T)
+    taus <- preds$predictions[,,]
+    vars <- preds$variance.estimates
+    simple_mat <- matrix(0, nrow = nrow(vars), ncol = ncol(vars))
+    harmless_mat <- matrix(0, nrow = nrow(vars), ncol = ncol(vars))
+    for (r in 1:nrow(vars)) {
+      for (c in 1:ncol(vars)) {
+        simple_mat[r,c] <- as.numeric(taus[r,c] > 0)
+        harmless_mat[r,c] <- as.numeric(taus[r,c] - 1.96 * sqrt(vars[r,c]) > 0)
+      }
+    }
+    colnames <- c("planmaking", "consequences", "combination")
+    for (c in 1:length(colnames)) {
+      treat_df[paste(cov, t, colnames[c], "harmless", sep = '_')] = harmless_mat[,c]
+      treat_df[paste(cov, t, colnames[c], "simple", sep = '_')] = simple_mat[,c]
+    }
   }
+  write.csv(treat_df, paste("~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/multiarm-itrs/multiarm",
+                            t, "trees.csv", sep = '_'))
 }
-treat_df <- data.frame(treat_mat)
-colnames(treat_df) <- c("planmaking", "consequences", "combination")
 ```
 
 
