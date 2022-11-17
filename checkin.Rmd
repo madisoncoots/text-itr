@@ -18,9 +18,6 @@ urlcolor: blue
 \end{center}
 Using data from a 2020 study exploring the effects of text messaging on increasing appearance rates for mandatory court appearances, we explore the effectiveness of various individualized treatment rules (ITRs). We develop ITRs for the binary decision of whether or not to treat (text) defendants in the study data, as well as ITRs for the multi-arm treatment decision of what kind of messaging strategy to use for each defendant. To this end, we explore the use of a number of different existing strategies for developing ITRs, including the use of decision trees, and evaluate their performance in this setting.
 
-
-
-
 # Background
 ## Prior Work
 In 2020, [Fishbane et al.](https://www.science.org/doi/10.1126/science.abb6591) published the results of an experiment conducted in New York to explore the causal effects of nudges in the criminal justice context. The authors were interested in understanding whether text message reminders regarding an individual’s upcoming mandatory court appearance could help that individual avoid a failure to appear (FTA). Ultimately, they found that providing text message reminders increased the likelihood that defendants would show up to their appointed court date, thus eliminating a substantial percentage of arrest warrants for failing to appear in court.
@@ -33,11 +30,10 @@ In the U.S. criminal justice system, failing to appear for mandatory court appea
 Given the high stakes associated with missing a court appearance, it is imperative that efforts to remind defendants of their appointments via text do not unintentionally discourage clients from appearing in court. In particular, while highlighting the negative consequences of missing court in the text reminders may motivate certain types of defendants to appear, that same framing may discourage other defendants. In particular, defendants from communities that are disproportionately impacted by policing might have a pre-existing distrust of the system, and highlighting the negative consequences of missing a court appearance may further deepen a sense of fear and distrust about engaging with the system. To address this potential heterogeneity in the way defendants may respond to different messaging strategies, an exploration of individualized treatment rules is warranted in this setting.
 
 ## Methods
-Prior work on ITR's / what we're drawing from
-Describe causal forest 
-Describe the Imai, Li paper which provides way to evaluate ITR
 
-Imai and Li (2019) propose another metric to evaluate ITRs, the Area Under the Prescriptive Effect Curve, or AUPEC. The AUPEC for an ITR is the integral of the the PAPE for all budget constraints. As such, our paper focuses on the PAPE and does not deal with AUPEC to evaluate our ITRs. Unlike the treatments considered by Imai and Li, text messages are extremely low cost, and so a budget constraint makes little sense in this particular setting. Since there is little to no budget constraint, it likewise makes little sense to determine the PAPE across all possible budget constraints, and so we ignore AUPEC.
+For the first phase of this project, we focus on developing ITRs using causal forests, which are a learning method for causal inference that are an extension of Random Forests. Causal forests are built similarly to random forests. However, rather than repeatedly splitting the data in order to minimize prediction error of an outcome variable, causal forests split the data in order to maximize the difference between an outcome variable and a treatment variable. Ultimately, this enables us to estimate how treatment effects may vary across a sample, and develop individualized treatment rules.
+
+To evaluate the effectiveness of an ITR, we follow [Imai and Li (2019)](https://www.tandfonline.com/doi/full/10.1080/01621459.2021.1923511) and use the population average prescriptive effect, or PAPE, as our primary performance metric. The PAPE's key advantage over metrics like the population average value is that it adjusts for a different proportion of the population being treated under an ITR than was treated in the original randomized experiment. This feature is especially useful in the current setting, where the randomized experiment treated a very small portion of the individuals who received a summons (about 6%, when restricted to only those using the new summons forms). Imai and Li (2019) propose another metric to evaluate ITRs, the Area Under the Prescriptive Effect Curve, or AUPEC. The AUPEC for an ITR is the integral of the the PAPE for all budget constraints. As such, our paper focuses on the PAPE and does not deal with AUPEC to evaluate our ITRs. Unlike the treatments considered by Imai and Li, text messages are extremely low cost, and so a budget constraint makes less sense in this particular setting. For this reason, we do not compute AUPEC.
 
 # Data Summary
 
@@ -71,7 +67,7 @@ combo <- df[df$combination == 1,]
 ```
 
 
-```{r include = F}
+```{r include = FALSE}
 # Function to easily extract appearance rates
 appearance_rate_by_demo <- function(data, treatment = "All", demo = "All", threshold = 0.5, places = 3) {
   if (demo == "All" & treatment == 'All')
@@ -107,10 +103,11 @@ data.frame(no_text,
   knitr::kable(col.names = c("No text", "Planning", "Consequences", "Combination", "Overall"),
                caption = "Conditional appearance rates for each treatment arm") %>%
   kable_styling(latex_options = "HOLD_position") %>%
-  row_spec(3,bold=T)
+  row_spec(3,bold=T) %>%
+  row_spec(0,bold=T)
 ```
 
-We also examine appearance rates along a number of different demographic dimensions, including gender, race, and poverty level. We note that the original dataset does not contain a variable for the race of an individual, but instead contains the percentage of the population in each individual's zip code that is either Black or Hispanic. Ideally, we would impute race by sampling a race label for each defendant according to the distribution of their zip code. However, the breakdown supplied in the data is not a distribution, so we cannot employ this method of imputing race. As a (temporary) workaround, we can construct an approximation of an individual's race by coding someone as, for example, Black if more than 50% of the population in that ZIP code was Black. We can do the same based on the percentage below the poverty line column. The table below summarizes the appearance rates for various demographics in the data, using the heuristic just described.
+We also examine appearance rates along a number of different demographic dimensions, including gender, race, and poverty level. We note that the original dataset does not contain a variable for the race of an individual, but instead contains the percentage of the population in each individual's zip code that is either Black or Hispanic. Ideally, we would impute race by sampling a race label for each defendant according to the distribution of their zip code. However, the breakdown supplied in the data is not a distribution, so we cannot employ this method of imputing race. As a (temporary) workaround, we can construct an approximation of an individual's race by coding someone as, for example, Black if more than 50% of the population in that ZIP code was Black. We can do the same based on the percentage below the poverty line column. Table 2 below summarizes the appearance rates for various demographics in the data, using the heuristic just described.
 
 ```{r include=F}
 # Demographic Breakdowns
@@ -127,7 +124,7 @@ for (d in  1:length(demos)) {
 }
 ```
 
-```{r}
+```{r echo = FALSE}
 demographic <- c("Gender", "Gender", "Race", "Race", "Race", "Poverty")
 group <- c("Male", "Female", "Black", "Hispanic", "Black or Hispanic", "Below Poverty Line")
 overall <- c(res[1,1], res[2,1], res[3,1], res[4,1], res[5,1], res[6,1])
@@ -148,12 +145,13 @@ data.frame(demographic,
                              "Consequences",
                              "Combination"),
                caption = "Conditional appearance rates for each treatment arm for different demographic groups") %>%
-  kable_styling(latex_options = "HOLD_position")
+  kable_styling(latex_options = "HOLD_position") %>%
+  row_spec(0,bold=T)
 ```
 
 \smallskip
 
-We can likewise break down the appearance rate by NYC borough:
+We likewise break down the appearance rate for each of the treatment arms by NYC borough. These results are shown below in Table 3. Interestingly, we observe that residents of Staten Island experience a higher appearance rate in response to the consequence-focused text reminders than do residents of other boroughs in New York.
 
 ```{r include=F}
 # Demographic Breakdowns
@@ -168,16 +166,31 @@ for (d in  1:length(demos)) {
   res[d, 5] <- appearance_rate_by_demo(df2, treatment = "combination", demo = demos[d])
 }
 ```
-\begin{tabular}{r | c | c | c c c}
-Borough & Overall & Any Treatment & Planmaking & Consequences & Combination \\ \hline
-The Bronx & `r res[1,1]` & `r res[1,2]` & `r res[1,3]` & `r res[1,4]` & `r res[1,5]` \\
-Brooklyn & `r res[2,1]` & `r res[2,2]` & `r res[2,3]` & `r res[2,4]` & `r res[2,5]` \\ 
-Manhattan & `r res[3,1]` & `r res[3,2]` & `r res[3,3]` & `r res[3,4]` & `r res[3,5]`  \\
-Queens & `r res[4,1]` & `r res[4,2]` & `r res[4,3]` & `r res[4,4]` & `r res[4,5]`  \\
-Staten Island & `r res[5,1]` & `r res[5,2]` & `r res[5,3]` & `r res[5,4]` & `r res[5,5]`
-\end{tabular}
 
-TODO interpret
+```{r echo = FALSE}
+boroughs <- c("The Bronx", "Brooklyn", "Manhattan", "Queens", "Staten Island")
+overall <- c(res[1,2], res[2,2], res[3,2], res[4,2], res[5,2])
+any_treatment <- c(res[1,1], res[2,1], res[3,1], res[4,1], res[5,1])
+planmaking <- c(res[1,3], res[2,3], res[3,3], res[4,3], res[5,3])
+consequences <- c(res[1,4], res[2,4], res[3,4], res[4,4], res[5,4])
+combination <- c(res[1,5], res[2,5], res[3,5], res[4,5], res[5,5])
+
+data.frame(boroughs,
+           any_treatment,
+           overall,
+           planmaking,
+           consequences,
+           combination) %>%
+  knitr::kable(col.names = c("Borough",
+                             "Overall",
+                             "Any treatment",
+                             "Planmaking",
+                             "Consequences",
+                             "Combination"),
+               caption = "Conditional appearance rates for each treatment arm by borough") %>%
+  kable_styling(latex_options = "HOLD_position") %>%
+  row_spec(0,bold=T)
+```
 
 # Preliminary Results
 
@@ -210,7 +223,8 @@ binary_itr_results %>%
   arrange(desc(papes)) %>%
   knitr::kable(col.names = c("No. of trees", "Covariate Set", "Treatment Rule", "PAPE", "Standard dev."),
                caption = "Binary Causal Forest ITR PAPEs") %>%
-  kable_styling(latex_options = "HOLD_position")
+  kable_styling(latex_options = "HOLD_position") %>%
+  row_spec(0,bold=T)
 ```
 
 
@@ -254,11 +268,13 @@ sd_matrix %>%
 
 
 # Future Work
-- Determine which forest is performing the best -- can we just take the one with the highest PAPE score?
-- Run a permutation test on the 5 boroughs testing which combination of messaging strategies is best. This has the benefit of being pretty interpretable.
-- Figure out a way to collapse the matrix to a measure
-- SVM
+Looking forward to the second phase of this project, there are several extensions we are interested in further exploring. On the evaluation side, we hope to think about how to compare the ITRs that result from the various causal forests we examine. Specifically, we are interested in thinking about whether comparing PAPEs across forests is most appropriate, or if there are other metrics and factors worth considering. Along similar lines, we also hope to think about ways to generate a single performance metric for multiarm causal forests from the matrix of PAPEs that we currently generate for each forest. 
 
+We are also interested in exploring the use of other algorithms for generating ITRs. In addition to acquiring results for multiarm causal forests of additional sizes, we plan on exploring the use of support vector machines (SVMs) for ITRs. Finally, we are also intrigued by differences in appearance rates that we observe across different boroughs in response to the various treatment arms. To this end, we plan on conducting a permutation test to see if it is possible to attain a high-performance ITR using a simple rules-based approach. This exploration, in particular, could yield valuable policy insights regarding the quality of ITRs generated with interpretability and simplicity as a priority. 
+
+\pagebreak
+
+# Backup
 -----------------------------
 
 
