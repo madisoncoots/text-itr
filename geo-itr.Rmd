@@ -72,7 +72,7 @@ pape_matrix_to_metric <- function(papes, weights) {
 # Geographic ITRs
 ```{r}
 # set up treatment conditions:
-conds <- 3 # start with treating everyone, see how fast it goes
+conds <- 4 # start with treating everyone, see how fast it goes
            # set conds to 4 to include control as an option
 max <- conds ^ 5
 StatenIsland <- c()
