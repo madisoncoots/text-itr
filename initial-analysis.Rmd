@@ -298,12 +298,66 @@ for (cov in c("Perpetrator")){
 write.csv(treat_df, paste("~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/multiarm-itrs/multiarm",
                           t, "trees.csv", sep = '_'), row.names = F)
 ```
-### Calculate PAPE-matrices from ITRs
+
+### Calculate PAPE-matrices from ITRs, and metrics from matrices
 ```{r}
+trees <- c('100', '500', '1000')
+cov_sets <- c("All", "Offense", "Perpetrator")
+rules <- c("harmless", "simple")
+
+cov_agg <- rep(cov_sets, length(trees) * length(rules))
+t_agg <- rep(trees, length(cov_sets) * length(rules))
+rule_agg <- c(rep(rules, length(cov_sets) * length(trees)))
+pape_metrics <- c()
+pape_metric_sds <- c()
+
+for (t in trees) {
+  multi <- read.csv(paste("~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/multiarm-itrs/multiarm", t, "trees.csv", sep = '_'))
+  for (covs in cov_sets) {
+    for (r in rules) {
+      pmat_data <- df
+      cols <- colnames(pmat_data)
+      pmat_data$itr_plan <- multi[,paste(covs, t, "planmaking", r, sep = '_')]
+      pmat_data$itr_cons <- multi[,paste(covs, t, "consequences", r, sep = '_')]
+      pmat_data$itr_combo <- multi[,paste(covs, t, "combination", r, sep = '_')]
+      p <- pape_matrix(pmat_data)
+      w <- .25
+      p_met <- pape_matrix_to_metric(p$pape, weights = c(w, w, w, w))
+      
+      # for sd
+      sd_mat <- p$sd
+      sd_mat <- matrix(as.numeric(sd_mat), nrow = d, ncol = d)
+      var_mat <- sd_mat * sd_mat
+      var_overall <- pape_matrix_to_metric(var_mat, weights = c(w^2,w^2,w^2,w^2))
+      p_met_sd <- sqrt(var_overall)
+      
+      # add to columns
+      pape_metrics <- c(pape_metrics, p_met)
+      pape_metric_sds <- c(pape_metric_sds, p_met_sd)
+    }
+  }
+}
+metric_df <- data.frame(trees, cov_sets, rules, pape_metrics, pape_metric_sds)
+metric_df[metric_df == "Harmless"] <- 'strict'
+metric_df[metric_df == "Offense"] <- 'Offense-based'
+metric_df[metric_df == "Perpetrator"] <- 'Defendant-based'
+colnames(metric_df) <- c("Trees", "Covariates", "Rule", "PAPE Metric", "sd")
+write.csv(metric_df, '~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/multiarm-itrs/all_multiarm_papemetrics.csv', row.names = F)
+
+# OLD
 multi100 <- read.csv("~/Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/multiarm-itrs/multiarm_100_trees.csv")
 pmat_data <- df
 pmat_data$itr_plan <- multi100$All_100_planmaking_harmless
 pmat_data$itr_cons <- multi100$All_100_consequences_harmless
 pmat_data$itr_combo <- multi100$All_100_combination_harmless
 p <- pape_matrix(pmat_data)
+
+pape_matrix_to_metric <- function(papes, weights) {
+  d <- dim(papes)[1]
+  papes <- matrix(as.numeric(papes), nrow = d, ncol = d)
+  if(!is.matrix(weights)) {
+    weights <- diag(weights)
+  }
+  return(sum(papes * weights))
+}
 ```
