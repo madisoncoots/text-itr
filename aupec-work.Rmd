@@ -57,13 +57,82 @@ pape_matrix <- function(d, itr_cols = c('itr_plan', 'itr_cons', 'itr_combo')) {
   return(tibble(pape = pape_mat, sd = sd_mat))
 }
 
+pape_matrix_to_metric <- function(papes, weights) {
+  if(!is.matrix(weights)) {
+    weights <- diag(weights)
+  }
+  return(papes %*% weights)
+}
 ```
 
-# AUPEC calculations
-```{r}
+# AUPEC calculations - have to bootstrap
+```{r eval = F}
 binary_itrs <- read.csv('Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/binary_itrs.csv')
 forest100results <- read.csv('Desktop/HKS/G1 Fall/Gov 2003/Final Paper/text-itr/binary_100trees_results.csv')
 
-aupec_100_all_simple <- AUPEC(df$Treatment, binary_itrs$All_simple_100, df$FTA)
+colnames(tmp) <- c("treat", "tau", "appeared")
+bootstrapfunc <- function(tmp) {
+  colnames(tmp) <- c("treat", "tau", "appeared")
+  resamp <- tmp[sample(nrow(tmp), 10000, replace = TRUE),]
+  return(AUPEC(resamp$treat, resamp$tau, resamp$appeared))
+}
 
+# Best Performing Cross-Validated forests
+strict <- read.csv('cv_output/strict_defendant_100.csv')
+simple <- read.csv('cv_output/simple_defendant_100.csv')
+strict$sd <- sqrt(strict$tau_var)
+simple$sd <- sqrt(simple$tau_var)
+strict$adj_tau <- strict$tau - 1.96*strict$sd # adjust for the strict rule
+
+## for strict
+aupecs_st <- c()
+sds_st <- c()
+points_st <- c()
+for (i in 1:200) {
+  b <- bootstrapfunc(data.frame(strict$original_treat, strict$adj_tau, strict$original_outcome))
+  aupecs_st <- c(aupecs_st, b$aupec)
+  sds_st<- c(sds_st, b$sd)
+  points_st <- c(points_st, b$vec)
+}
+
+## for simple
+aupecs_si <- c()
+sds_si <- c()
+points_si <- c()
+for (i in 1:200) {
+  b <- bootstrapfunc(data.frame(simple$original_treat, simple$tau, simple$original_outcome))
+  aupecs_si <- c(aupecs_si, b$aupec)
+  sds_si<- c(sds_si, b$sd)
+  points_si <- c(points_si, b$vec)
+}
+
+# turn vec lists into matrices/dataframes
+points_st_df <- data.frame(matrix(points_st, ncol = 10000, nrow = 200))
+points_st_df <- points_st_df[,seq_len(ncol(points_st_df)) %% 50 == 0]
+colnames(points_st_df) <- seq(.005, 1, length.out = 200)
+points_si_df <- data.frame(matrix(points_si, ncol = 10000, nrow = 200))
+points_si_df <- points_si_df[,seq_len(ncol(points_si_df)) %% 50 == 0]
+colnames(points_si_df) <- seq(.005, 1, length.out = 200)
+
+avg_strict <- data.frame(seq(.005, 1, length.out = 200), colMeans(points_st_df))
+avg_simple <- data.frame(seq(.005, 1, length.out = 200), colMeans(points_si_df))
+colnames(avg_strict) <- c("X", "AvgOutcome")
+colnames(avg_simple) <- c("X", "AvgOutcome")
+avg_strict$rule <- "strict"
+avg_simple$rule <- "simple"
+plotting_df <- rbind(avg_strict, avg_simple)
+
+avg_simple <- colMeans(points_si_df)
+plotting_df <- data.frame(seq(.005, 1, length.out = 200), avg_strict, avg_simple)
+
+colnames(plotting_df) <- c("X", "strict", "simple")
+
+library(ggplot2)
+plt <- ggplot(data = plotting_df, aes(x = X, y = AvgOutcome, color = rule)) +
+  theme_minimal() +
+  xlab("Proportion of Treated Units") + ylab("Average Outcome") +
+  ggtitle("AUPEC Curves: 100 trees, defendant covariate set") +
+  geom_smooth() +
+  geom_point(alpha = 0.1)
+plt
 ```
