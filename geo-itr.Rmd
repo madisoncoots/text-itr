@@ -72,7 +72,7 @@ pape_matrix_to_metric <- function(papes, weights) {
 # Geographic ITRs
 ```{r}
 # set up treatment conditions:
-conds <- 4 # start with treating everyone, see how fast it goes
+conds <- 3 # start with treating everyone, see how fast it goes
            # set conds to 4 to include control as an option
 max <- conds ^ 5
 StatenIsland <- c()
@@ -113,5 +113,21 @@ get_pape_metric <- function(x) {
   return(pape_matrix_to_metric(get_pape_matrix(x)$pape, weights = c(.25, .25, .25, .25)))
 }
 
+get_pape_sd <- function(x) {
+  sd_mat <- get_pape_matrix(x)$sd
+  sd_mat <- matrix(as.numeric(sd_mat), nrow = d, ncol = d)
+  var_mat <- sd_mat * sd_mat
+  w <- .25 ^ 2
+  var_overall <- pape_matrix_to_metric(var_mat, weights = c(w,w,w,w))
+  return(sqrt(var_overall))
+}
+
 geos$pape_metric <- apply(geos, 1, get_pape_metric)
+geos$pape_metric_sd <- apply(geos, 1, get_pape_sd)
+```
+
+# Evaluation
+```{r}
+geo_three_way <- read.csv('geo_itr_papes.csv')
+geo_four_way <- read.csv('geo_itr_papes_withcontrol.csv')
 ```
